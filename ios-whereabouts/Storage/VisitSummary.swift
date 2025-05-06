@@ -52,17 +52,17 @@ struct VisitSummary: Identifiable {
         } else {
             if days >= 365 {
                 let years = days / 365
-                return "Over \(years) year\(years > 1 ? "s" : "") starting from \(start) in \(countryList)"
+                return "Over \(years) year\(years > 1 ? "s" : "") in \(countryList)"
             } else if days >= 60 {
                 let months = days / 30
-                return "\(months) month\(months > 1 ? "s" : "") starting from \(start) in \(countryList)"
+                return "\(months) month\(months > 1 ? "s" : "") in \(countryList)"
             } else if days >= 14 {
                 let weeks = days / 7
-                return "\(weeks) week\(weeks > 1 ? "s" : "") starting from \(start) in \(countryList)"
+                return "\(weeks) week\(weeks > 1 ? "s" : "") in \(countryList)"
             } else if days == 1 {
                 return "1 day in \(countryList)"
             } else {
-                return "\(days) days starting from \(start) in \(countryList)"
+                return "\(days) days starting in \(countryList)"
             }
         }
     }
