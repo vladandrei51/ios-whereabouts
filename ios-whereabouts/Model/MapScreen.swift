@@ -49,7 +49,7 @@ struct MapScreen: View {
             let data = try? Data(contentsOf: url),
             let features = try? MKGeoJSONDecoder().decode(data) as? [MKGeoJSONFeature]
         else {
-            print("Unable to load countries.geojson")
+            print("Unable to load countries.geojson!")
             return []
         }
 
