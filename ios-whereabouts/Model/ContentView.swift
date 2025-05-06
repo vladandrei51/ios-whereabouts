@@ -1,46 +1,24 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var locationManager = LocationManager()
-    @StateObject private var visitStore = VisitStore.shared
+    enum Tab { case map, logs, countries }
+    @State private var selection: Tab = .map
 
     var body: some View {
-        NavigationView {
-            List {
-                Section("Current Location") {
-                    if let visit = locationManager.latestVisit {
-                        Text("\(visit.countryName)")
-                    } else {
-                        Text("Waiting for location...")
-                    }
-                }
+        TabView(selection: $selection) {
+            MapScreen()
+                .tabItem { Label("Map", systemImage: "map") }
+                .tag(Tab.map)
+            
+            ProfileScreen()
+                .tabItem { Label("Countries", systemImage: "globe") }
+                .tag(Tab.countries)
 
-                Section("Visit Summary") {
-                    let summaries = VisitSummaryGenerator.generate(from: visitStore.visits)
 
-                    if summaries.isEmpty {
-                        Text("Always allow location for this app and let data accumulate as time goes by.")
-                            .foregroundColor(.gray)
-                            .font(.footnote)
-                    } else {
-                        ForEach(summaries) { summary in
-                            Text(summary.description)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Country Visits")
-            .onAppear {
-//                VisitStore.shared.addMockVisits()
+            LogsScreen()
+                .tabItem { Label("Logs", systemImage: "list.bullet") }
+                .tag(Tab.logs)
 
-                locationManager.requestPermission()
-                locationManager.startTracking()
-                
-                if VisitStore.shared.visits.isEmpty {
-                    locationManager.fetchCurrentLocationOnce()
-                }
-
-            }
         }
     }
 }
