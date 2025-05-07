@@ -24,11 +24,10 @@ struct VisitSummary: Identifiable {
 
     var description: String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "d MMM yyyy"
+        formatter.dateFormat = "dd MMM yyyy"
 
         let calendar = Calendar.current
         let days = calendar.dateComponents([.day], from: startDate, to: endDate).day ?? 0
-        let start = formatter.string(from: startDate)
 
         let countryList = countries
             .map { "\($0.localizedCountryName) \($0.flagEmoji)" }
@@ -46,8 +45,10 @@ struct VisitSummary: Identifiable {
                 return "You've been in \(countryList) for the past \(weeks) week\(weeks > 1 ? "s" : "")"
             } else if days == 1 {
                 return "You've been in \(countryList) since yesterday"
+            } else if days == 0 {
+                return "Welcome to \(countryList)!"
             } else {
-                return "You've been in \(countryList) for the past \(days) day\(days > 1 ? "s" : "")"
+                return "You've been in \(countryList) for the past \(days) days"
             }
         } else {
             if days >= 365 {
@@ -61,42 +62,50 @@ struct VisitSummary: Identifiable {
                 return "\(weeks) week\(weeks > 1 ? "s" : "") in \(countryList)"
             } else if days == 1 {
                 return "1 day in \(countryList)"
+            } else if days == 0 {
+                return "Less than 24 hours in \(countryList)"
             } else {
-                return "\(days) days starting in \(countryList)"
+                return "\(days) days in \(countryList)"
             }
         }
     }
 }
 
 final class VisitSummaryGenerator {
-    static func generate(from visits: [CountryVisitEntity]) -> [VisitSummary] {
-        let sorted = visits
-            .sorted { ($0.timestamp ?? .distantPast) < ($1.timestamp ?? .distantPast) }
-
-        guard !sorted.isEmpty else { return [] }
-
-        var result: [VisitSummary] = []
-
-        for i in 0..<sorted.count {
-            guard let start = sorted[i].timestamp,
-                  let country = sorted[i].countryCode else { continue }
-
-            let end: Date = {
-                if i + 1 < sorted.count, let next = sorted[i + 1].timestamp {
-                    return next
-                } else {
-                    return Date() // now
-                }
-            }()
-
-            result.append(VisitSummary(
-                startDate: start,
-                endDate: end,
-                countries: [country],
-                isMostRecent: i == sorted.count - 1
-            ))
-        }
-
-        return result.reversed()
+  static func generate(from visits: [CountryVisitEntity]) -> [VisitSummary] {
+    // 1) turn each entity into a non‐optional (start, end, code) tuple
+    typealias Interval = (start: Date, end: Date, code: String)
+    let intervals: [Interval] = visits.compactMap { (v) -> Interval? in
+      // require that we have a start date and a countryCode
+      guard let s = v.startTimestamp,
+            let code = v.countryCode
+      else { return nil }
+      // if no endTimestamp, treat as “now”
+      let e = v.endTimestamp ?? Date()
+      return (start: s, end: e, code: code)
     }
+
+    // 2) sort that array by its .start
+    let sortedIntervals = intervals.sorted(by: { lhs, rhs in
+      return lhs.start < rhs.start
+    })
+
+    guard !sortedIntervals.isEmpty else { return [] }
+
+    // 3) build VisitSummary instances
+    var result: [VisitSummary] = []
+    for (index, interval) in sortedIntervals.enumerated() {
+      let isMostRecent = (index == sortedIntervals.count - 1)
+      let summary = VisitSummary(
+        startDate: interval.start,
+        endDate:   interval.end,
+        countries: [interval.code],
+        isMostRecent: isMostRecent
+      )
+      result.append(summary)
+    }
+
+    // 4) we want the most‐recent first
+    return result.reversed()
+  }
 }

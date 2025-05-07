@@ -12,26 +12,26 @@ struct CountryVisit: Identifiable {
 final class LocationManager: NSObject, ObservableObject {
     private let locationManager = CLLocationManager()
     private let geocoder = CLGeocoder()
-
+    
     @Published var latestVisit: CountryVisit?
-
+    
     private var lastCountryCode: String?
-
+    
     override init() {
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-        #if !targetEnvironment(simulator)
+#if !targetEnvironment(simulator)
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.pausesLocationUpdatesAutomatically = false
-        #endif
+#endif
     }
-
+    
     func requestPermission() {
         locationManager.requestWhenInUseAuthorization()
         locationManager.requestAlwaysAuthorization()
     }
-
+    
     func startTracking() {
         locationManager.startMonitoringSignificantLocationChanges()
     }
@@ -43,44 +43,80 @@ final class LocationManager: NSObject, ObservableObject {
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Failed to get one-time location: \(error.localizedDescription)")
     }
-
+    
 }
 
 extension LocationManager: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last else { return }
-
+        let now = Date()
+        
         geocoder.reverseGeocodeLocation(loc) { [weak self] placemarks, error in
-            guard let self = self,
-                  let placemark = placemarks?.first,
-                  let country = placemark.country,
-                  let code = placemark.isoCountryCode else { return }
-
+            guard
+                let self = self,
+                let placemark = placemarks?.first,
+                let country = placemark.country,
+                let code = placemark.isoCountryCode
+            else { return }
+            
             let visit = CountryVisit(
                 countryCode: code,
                 countryName: country,
-                timestamp: Date(),
+                timestamp: now,
                 coordinates: loc.coordinate
             )
-
-            // update "current location" UI
+            
             DispatchQueue.main.async {
                 self.latestVisit = visit
             }
-
-            // Only persist if the last saved country is different
-            if let lastSaved = VisitStore.shared.visits.first,
-               lastSaved.countryCode == code {
-                return
+            
+            let store = VisitStore.shared
+            
+            let newEntity = CountryVisitEntity(context: store.container.viewContext)
+            newEntity.id               = visit.id
+            newEntity.countryCode      = visit.countryCode
+            newEntity.countryName      = visit.countryName
+            newEntity.latitude         = visit.coordinates.latitude
+            newEntity.longitude        = visit.coordinates.longitude
+            newEntity.startTimestamp   = now
+            newEntity.endTimestamp     = nil
+            
+            // if we already have records
+            if !store.visits.isEmpty {
+                let lastVisit = store.visits.first!
+                // only if country changed, start a new one
+                if lastVisit.endTimestamp == nil {
+                    if lastVisit.countryCode == code {
+                        // still same country; no new record
+                        return
+                    } else {
+                        // close the latest visit
+                        lastVisit.endTimestamp = now
+                        // create new entity with startTimestamp = now, endTimestamp = nil
+                        do {
+                            try store.container.viewContext.save()
+                            store.fetchVisits()
+                            print("Started visit in \(country) at \(now)")
+                        } catch {
+                            print("Failed saving visit: \(error)")
+                        }
+                        
+                    }
+                    
+                }
             }
-
-            // Save visit and update `lastCountryCode`
-            DispatchQueue.main.async {
-                self.lastCountryCode = code
-                VisitStore.shared.saveVisit(from: visit)
-                print("Logged visit: \(country) at \(visit.timestamp)")
+            else {
+                do {
+                    try store.container.viewContext.save()
+                    store.fetchVisits()
+                    print("Started visit in \(country) at \(now)")
+                } catch {
+                    print("Failed saving visit: \(error)")
+                }
             }
+            
         }
+        
     }
-
+    
 }

@@ -4,11 +4,11 @@ import CoreLocation
 
 class VisitStore: ObservableObject {
     static let shared = VisitStore()
-
+    
     let container: NSPersistentContainer
-
+    
     @Published var visits: [CountryVisitEntity] = []
-
+    
     private init() {
         container = NSPersistentContainer(name: "VisitModel")
         container.loadPersistentStores { description, error in
@@ -16,87 +16,70 @@ class VisitStore: ObservableObject {
                 fatalError("Core Data failed to load: \(error.localizedDescription)")
             }
         }
+        addMockVisits()
         fetchVisits()
     }
     
     // add mock data for testing purposes
     func addMockVisits() {
-        let context = container.viewContext
+        let ctx = container.viewContext
+        
+        // 0) Delete all existing
+        let fetch: NSFetchRequest<NSFetchRequestResult> = CountryVisitEntity.fetchRequest()
+        let delReq = NSBatchDeleteRequest(fetchRequest: fetch)
+        do {
+            try ctx.execute(delReq)
+        } catch {
+            print("Failed to clear old visits: \(error.localizedDescription)")
+        }
+        
+        // 1) Prepare date formatter
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         formatter.timeZone = TimeZone.current
-
-        // USA: United States Capitol, Washington DC
-        // Canada: Ottawa, ON
-        // France: Paris
-        // Romania: Bucharest
-        let mockSegments: [(code: String, name: String, timestamp: String, lat: Double, lon: Double)] = [
-            ("US", "United States", "2023-04-01 08:15:00", 38.889805, -77.009056),    // US Capitol :contentReference[oaicite:0]{index=0}
-            ("CA", "Canada",        "2023-07-10 14:42:00", 45.424721, -75.695000),   // Ottawa :contentReference[oaicite:1]{index=1}
-            ("FR", "France",        "2023-08-18 09:30:00", 48.864716,   2.349014),   // Paris :contentReference[oaicite:2]{index=2}
-            ("RO", "Romania",       "2024-04-06 20:10:00", 44.432250,  26.106260),   // Bucharest :contentReference[oaicite:3]{index=3}
-            ("US", "United States", "2025-04-08 11:00:00", 38.889805, -77.009056)
+        
+        let mockSegments: [(code: String, name: String, start: String, end: String? , lat: Double, lon: Double)] = [
+            ("US","United States","2023-07-10 14:41:00", "2023-07-10 14:42:00", 38.889805, -77.009056),
+            ("CA","Canada",       "2023-07-10 14:42:00","2023-08-18 09:30:00", 45.424721, -75.695000),
+            ("US","United States","2023-08-18 09:30:00", "2023-08-20 09:30:00", 38.889805, -77.009056),
+            ("FR","France",       "2023-08-20 09:30:00","2024-04-06 20:10:00", 48.864716,   2.349014),
+            ("RO","Romania",      "2024-04-06 20:10:00", nil, 44.432250,  26.106260),
+            
         ]
-
-        for segment in mockSegments {
-            guard let date = formatter.date(from: segment.timestamp) else {
-                print("Failed to parse date: \(segment.timestamp)")
-                continue
-            }
-
-            let visit = CountryVisitEntity(context: context)
-            visit.id = UUID()
-            visit.countryCode = segment.code
-            visit.countryName = segment.name
-            visit.timestamp = date
-            visit.latitude = segment.lat
-            visit.longitude = segment.lon
+        
+        for seg in mockSegments {
+            guard let s = formatter.date(from: seg.start) else { continue }
+            let e = seg.end.flatMap { formatter.date(from: $0) }
+            
+            let visit = CountryVisitEntity(context: ctx)
+            visit.id             = UUID()
+            visit.countryCode    = seg.code
+            visit.countryName    = seg.name
+            visit.latitude       = seg.lat
+            visit.longitude      = seg.lon
+            visit.startTimestamp = s
+            visit.endTimestamp   = e
         }
-
+        
         do {
-            try context.save()
+            try ctx.save()
             fetchVisits()
-            print("Mock visits added with coords")
+            print("Mock visits reset and added")
         } catch {
             print("Failed to add mock data: \(error.localizedDescription)")
         }
     }
-
+    
+    // fetches visit desc by startTimestamp
     func fetchVisits() {
-        let request: NSFetchRequest<CountryVisitEntity> = CountryVisitEntity.fetchRequest()
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \CountryVisitEntity.timestamp, ascending: false)]
-
+        let req: NSFetchRequest<CountryVisitEntity> = CountryVisitEntity.fetchRequest()
+        req.sortDescriptors = [
+            NSSortDescriptor(key: #keyPath(CountryVisitEntity.startTimestamp), ascending: false)
+        ]
         do {
-            visits = try container.viewContext.fetch(request)
+            visits = try container.viewContext.fetch(req)
         } catch {
-            print("Failed to fetch visits: \(error.localizedDescription)")
-        }
-    }
-
-    func saveVisit(from visit: CountryVisit) {
-        let newVisit = CountryVisitEntity(context: container.viewContext)
-        newVisit.id = visit.id
-        newVisit.countryCode = visit.countryCode
-        newVisit.countryName = visit.countryName
-        newVisit.timestamp = visit.timestamp
-        newVisit.latitude = visit.coordinates.latitude
-        newVisit.longitude = visit.coordinates.longitude
-
-        do {
-            try container.viewContext.save()
-            fetchVisits()
-        } catch {
-            print("Failed to save visit: \(error.localizedDescription)")
-        }
-    }
-
-    func deleteVisit(_ visit: CountryVisitEntity) {
-        container.viewContext.delete(visit)
-        do {
-            try container.viewContext.save()
-            fetchVisits()
-        } catch {
-            print("Failed to delete visit: \(error.localizedDescription)")
+            print("Failed to fetch visits: \(error)")
         }
     }
 }

@@ -10,7 +10,7 @@ struct MapScreen: View {
             span: MKCoordinateSpan(latitudeDelta: 100, longitudeDelta: 100)
         )
     )
-
+    
     var body: some View {
         NavigationView {
             Map(position: $cameraPosition, interactionModes: .all) {
@@ -26,19 +26,19 @@ struct MapScreen: View {
             .onChange(of: VisitStore.shared.visits) { reloadOverlays() }
         }
     }
-
+    
     private func reloadOverlays() {
         let visits = VisitStore.shared.visits
         let codes = Set(visits.compactMap { $0.countryCode })
         overlays = loadCountryOverlays(for: codes, visits: visits)
-
+        
         guard !overlays.isEmpty else { return }
         let unionRect = overlays
             .map { $0.polygon.boundingMapRect }
             .reduce(MKMapRect.null) { $0.union($1) }
         cameraPosition = .region(MKCoordinateRegion(unionRect))
     }
-
+    
     /// Load countries.geojson and filter features by matching any fallback code
     private func loadCountryOverlays(
         for codes: Set<String>,
@@ -52,15 +52,15 @@ struct MapScreen: View {
             print("Unable to load countries.geojson!")
             return []
         }
-
+        
         var result: [CountryOverlay] = []
-
+        
         for feature in features {
             guard
                 let propData = feature.properties,
                 let dict = try? JSONSerialization.jsonObject(with: propData) as? [String:Any]
             else { continue }
-
+            
             // Collect all possible two‑letter codes in priority order
             let possible: [String?] = [
                 dict["ISO_A2"] as? String,
@@ -69,20 +69,20 @@ struct MapScreen: View {
                 dict["FIPS_10"] as? String,
                 dict["POSTAL"] as? String
             ]
-
+            
             // Take the first non-nil, non-"-99", two‑letter string
             let iso = possible
                 .compactMap { $0 }
                 .first { $0 != "-99" && $0.count == 2 }
-
+            
             guard let isoCode = iso, codes.contains(isoCode) else { continue }
-
+            
             // Get all visit coords for this ISO
             let coords = visits
                 .filter { $0.countryCode == isoCode }
                 .map { CLLocationCoordinate2D(latitude: $0.latitude,
                                               longitude: $0.longitude) }
-
+            
             // For each geometry piece, only include if a visit point lies inside
             for geom in feature.geometry {
                 if let poly = geom as? MKPolygon {
@@ -97,10 +97,10 @@ struct MapScreen: View {
                 }
             }
         }
-
+        
         return result
     }
-
+    
     struct CountryOverlay: Identifiable {
         let id = UUID()
         let countryCode: String
